@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express, { type Express, type Request, type Response } from 'express';
 import cors from 'cors';
-import { MongoClient, ServerApiVersion } from 'mongodb';
+import { MongoClient, ServerApiVersion, ObjectId } from 'mongodb';
 
 const app: Express = express();
 const port = process.env.PORT || 5001;
@@ -23,7 +23,6 @@ async function run() {
   try {
     const database = client.db('alcovedb');
 
-    // collections — we'll wire up routes for these one at a time
     const experiencesCollection = database.collection('experiences');
     const bookingsCollection = database.collection('bookings');
     const paymentsCollection = database.collection('payments');
@@ -87,11 +86,15 @@ async function run() {
 
     app.get('/api/manage/experiences', async (req: Request, res: Response) => {
       try {
-        const hostId = (req as any).user?.id;
-        if (!hostId) return res.status(401).send("Unauthorized");
+        const hostId = req.query.hostId as string;
+        
+        if (!hostId) {
+           return res.status(401).json({ message: "Unauthorized: Missing host ID" });
+        }
 
         const status = req.query.status as string; 
         const matchQuery: any = { host_id: hostId };
+        
         if (status && status !== 'all') {
           matchQuery.status = status;
         }
@@ -120,29 +123,41 @@ async function run() {
 
         res.status(200).json(results);
       } catch (error) {
+        console.error("Error fetching manage view:", error);
         res.status(500).json({ message: "Error fetching manage view" });
       }
     });
 
     app.delete('/api/experiences/:id', async (req: Request, res: Response) => {
-      const { id } = req.params;
-      const hostId = (req as any).user?.id;
+      try {
+        const id = req.params.id as string;
+        const hostId = req.query.hostId as string; 
 
-      const result = await experiencesCollection.deleteOne({ _id: id, host_id: hostId });
+        const result = await experiencesCollection.deleteOne({ 
+          _id: new ObjectId(id), 
+          host_id: hostId 
+        });
 
-      if (result.deletedCount === 0) return res.status(404).send("Not found");
-      res.status(200).send("Deleted");
+        if (result.deletedCount === 0) return res.status(404).send("Not found");
+        res.status(200).send("Deleted");
+      } catch (error) {
+        res.status(500).send("Error deleting experience");
+      }
     });
 
     app.patch('/api/experiences/:id', async (req: Request, res: Response) => {
-      const { id } = req.params;
-      const updates = req.body; 
+      try {
+        const id = req.params.id as string; 
+        const updates = req.body; 
 
-      await experiencesCollection.updateOne(
-        { _id: id },
-        { $set: updates }
-      );
-      res.status(200).send("Updated");
+        await experiencesCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updates }
+        );
+        res.status(200).send("Updated");
+      } catch (error) {
+        res.status(500).send("Error updating experience");
+      }
     });
 
     app.post('/api/experiences', async (req: Request, res: Response) => {
