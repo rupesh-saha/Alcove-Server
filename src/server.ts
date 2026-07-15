@@ -28,8 +28,8 @@ async function run() {
     const paymentsCollection = database.collection('payments');
     const reviewsCollection = database.collection('reviews');
 
-    await client.db('admin').command({ ping: 1 });
-    console.log('Connected to MongoDB!');
+    
+    
 
     app.get('/api/experiences', async (req: Request, res: Response) => {
       try {
