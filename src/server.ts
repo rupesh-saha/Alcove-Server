@@ -69,6 +69,112 @@ async function run() {
       }
     });
 
+    app.get('/api/experiences/:slug', async (req: Request, res: Response) => {
+      try {
+        const { slug } = req.params;
+        const experience = await experiencesCollection.findOne({ slug });
+
+        if (!experience) {
+          return res.status(404).send({ message: "Experience not found" });
+        }
+
+        res.status(200).json(experience);
+      } catch (error) {
+        console.error("Error fetching single experience:", error);
+        res.status(500).json({ message: "Failed to fetch experience details" });
+      }
+    });
+
+    app.get('/api/manage/experiences', async (req: Request, res: Response) => {
+      try {
+        const hostId = (req as any).user?.id;
+        if (!hostId) return res.status(401).send("Unauthorized");
+
+        const status = req.query.status as string; 
+        const matchQuery: any = { host_id: hostId };
+        if (status && status !== 'all') {
+          matchQuery.status = status;
+        }
+
+        const results = await experiencesCollection.aggregate([
+          { $match: matchQuery },
+          {
+            $lookup: {
+              from: 'bookings',
+              localField: '_id',
+              foreignField: 'experience_id', 
+              as: 'bookingList'
+            }
+          },
+          {
+            $addFields: {
+              bookingCount: { $size: "$bookingList" }
+            }
+          },
+          {
+            $project: {
+              bookingList: 0 
+            }
+          }
+        ]).toArray();
+
+        res.status(200).json(results);
+      } catch (error) {
+        res.status(500).json({ message: "Error fetching manage view" });
+      }
+    });
+
+    app.delete('/api/experiences/:id', async (req: Request, res: Response) => {
+      const { id } = req.params;
+      const hostId = (req as any).user?.id;
+
+      const result = await experiencesCollection.deleteOne({ _id: id, host_id: hostId });
+
+      if (result.deletedCount === 0) return res.status(404).send("Not found");
+      res.status(200).send("Deleted");
+    });
+
+    app.patch('/api/experiences/:id', async (req: Request, res: Response) => {
+      const { id } = req.params;
+      const updates = req.body; 
+
+      await experiencesCollection.updateOne(
+        { _id: id },
+        { $set: updates }
+      );
+      res.status(200).send("Updated");
+    });
+
+    app.post('/api/experiences', async (req: Request, res: Response) => {
+      try {
+        const experienceData = req.body;
+        const slug = experienceData.title
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '');
+
+        const newExperience = {
+          ...experienceData,
+          slug,
+          status: 'draft', 
+          createdAt: new Date(),
+          avgRating: 0,
+          reviewCount: 0,
+
+          images: Array.isArray(experienceData.images) ? experienceData.images : experienceData.images.split(','),
+          whatsIncluded: Array.isArray(experienceData.whatsIncluded) ? experienceData.whatsIncluded : experienceData.whatsIncluded.split(','),
+          price: Number(experienceData.price),
+          groupSizeMax: Number(experienceData.groupSizeMax)
+        };
+
+        const result = await experiencesCollection.insertOne(newExperience);
+        res.status(201).json({ success: true, id: result.insertedId });
+      } catch (error) {
+        console.error("Error creating experience:", error);
+        res.status(500).json({ message: "Failed to create experience" });
+      }
+    });
+
   } finally {
     // client intentionally stays open for the server's lifetime
   }
