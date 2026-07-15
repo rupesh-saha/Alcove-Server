@@ -32,7 +32,43 @@ async function run() {
     await client.db('admin').command({ ping: 1 });
     console.log('Connected to MongoDB!');
 
-    // routes will go here, added incrementally
+    app.get('/api/experiences', async (req: Request, res: Response) => {
+      try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 9;
+        const search = (req.query.search as string) || "";
+        const category = (req.query.category as string) || "all";
+
+        const query: any = { status: 'active' };
+
+        if (search) {
+          query.title = { $regex: search, $options: 'i' };
+        }
+
+        if (category && category !== "all") {
+          query.category = category;
+        }
+
+        const skip = (page - 1) * limit;
+
+        const [totalExperiences, experiences] = await Promise.all([
+          experiencesCollection.countDocuments(query),
+          experiencesCollection.find(query).skip(skip).limit(limit).toArray()
+        ]);
+
+        const totalPages = Math.ceil(totalExperiences / limit);
+        res.status(200).json({
+          data: experiences,
+          totalPages,
+          currentPage: page,
+          totalCount: totalExperiences
+        });
+      } catch (error) {
+        console.error("Error fetching experiences:", error);
+        res.status(500).json({ message: "Failed to fetch experiences" });
+      }
+    });
+
   } finally {
     // client intentionally stays open for the server's lifetime
   }
